@@ -2,13 +2,13 @@
 
 #include "config.h"
 #include "log.h"
-#include "raftpeer.h"
 #include <mutex>
 #include <random>
 #include <smalljrpc/Procedure.h>
 #include <smalljrpc/RpcServer.h>
 #include <smalljrpc/RpcService.h>
 #include <smalljson/smalljson.h>
+#include <smallnet/EventLoopThread.h>
 #include <smallnet/Timer.h>
 #include <string>
 #include <vector>
@@ -17,32 +17,35 @@ struct RequestVoteArgs;
 struct RequestVoteReply;
 struct AppendEntriesArgs;
 struct AppendEntriesReply;
+class RaftPeer;
 
-class Raft {
+class Raft : public std::enable_shared_from_this<Raft> {
 public:
-  friend class RaftService;
-  typedef std::unique_ptr<RaftPeer> RaftPeerPtr;
   enum class State { Follower, Candidate, Leader };
+  typedef std::unique_ptr<RaftPeer> RaftPeerPtr;
+  friend class RaftService;
+  friend class RaftPeer;
+
+public:
   Raft() = delete;
-  Raft(EventLoop *loop, const Config &config) : id_(config.id), loop_(loop) {
-    peerNum_ = config.peerAddr.size();
-    for (size_t i = 0; i < peerNum_; i++) {
-      peerList_.emplace_back(new RaftPeer(i + 1, loop, config.peerAddr[i]));
-    }
-  }
+  Raft(EventLoop *loop, const Config &config);
+  void start();
   State state() const { return state_; }
   void tick();
   void election();
   void heartbeat();
 
 private:
+  void resetTimer();
   void RequestVoteService(smalljson::Value &request,
                           smalljson::Value &response);
   void RequestVote(const RequestVoteArgs &args, RequestVoteReply &reply);
+  void FinishRequestVote(smalljson::Value &reply);
 
   void AppendEntriesService(smalljson::Value &request,
                             smalljson::Value &response);
   void AppendEntries(const AppendEntriesArgs &args, AppendEntriesReply &reply);
+  void FinishAppendEntries(smalljson::Value &reply);
 
   void startRequestVote();
   void becomeFollower(int term);
@@ -51,7 +54,9 @@ private:
 private:
   std::uniform_int_distribution<int> u{1000, 1400};
   std::default_random_engine e;
-  Timer::milliseconds randomizedElectionTimeout_;
+  Timer::milliseconds randomizedElectionTimeout_ = Timer::milliseconds(u(e));
+  EventLoopThread loopThread_;
+  EventLoop *clientLoop_;
   EventLoop *loop_;
   std::vector<RaftPeerPtr> peerList_;
   std::mutex mutex_;

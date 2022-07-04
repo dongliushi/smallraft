@@ -1,5 +1,27 @@
 #include "raft.h"
+#include "raftpeer.h"
 #include <iostream>
+
+using namespace smalljson;
+
+Raft::Raft(EventLoop *loop, const Config &config)
+    : id_(config.id), loop_(loop), when_(now()),
+      clientLoop_(loopThread_.startLoop()) {
+  peerNum_ = config.peerAddr.size();
+  for (size_t i = 0; i < peerNum_; i++) {
+    peerList_.emplace_back(new RaftPeer(i + 1, loop, config.peerAddr[i]));
+  }
+}
+
+void Raft::start() {
+  for (int i = 0; i < peerNum_; i++) {
+    peerList_[i]->addRaft(this);
+    // if (i != id_) {
+    //   peerList_[i]->start();
+    // }
+  }
+}
+
 void Raft::becomeFollower(int term) {
   state_ = State::Follower;
   currentTerm_ = term;
@@ -7,63 +29,76 @@ void Raft::becomeFollower(int term) {
 }
 
 void Raft::becomeCandidate() {
+  std::unique_lock<std::mutex> lock(mutex_);
   state_ = State::Candidate;
   currentTerm_ += 1;
   votedFor_ = id_;
-  startRequestVote();
+  resetTimer();
 }
 
 void Raft::startRequestVote() {
   RequestVoteArgs args;
-  args.term = currentTerm_;
-  args.candidateId = id_;
-  args.lastLogIndex = log_.lastLogIndex();
-  args.lastLogTerm = log_.lastLogTerm();
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    args.term = currentTerm_;
+    args.candidateId = id_;
+    args.lastLogIndex = log_.lastLogIndex();
+    args.lastLogTerm = log_.lastLogTerm();
+  }
+  std::cout << "request\n";
   for (int i = 0; i < peerNum_; i++) {
     if (i != id_) {
-      // peerList_[i] ->RequestVote(args);
+      // clientLoop_->runInLoop(
+      //     [i, args, this] { peerList_[i]->RequestVote(args); });
     }
   }
 }
 
 void Raft::tick() {
-  switch (state_) {
-  case State::Follower:
-  case State::Candidate:
-    election();
-    break;
-  case State::Leader:
-    heartbeat();
-    break;
-  default:
-    assert(false && "bad role");
+  loop_->assertInLoopThread();
+  while (true) {
+    switch (state_) {
+    case State::Follower:
+      if (now() - when_ >= randomizedElectionTimeout_) {
+        becomeCandidate();
+      }
+    case State::Candidate:
+      startRequestVote();
+      break;
+    case State::Leader:
+      heartbeat();
+      break;
+    default:
+      assert(false && "bad state");
+    }
   }
 }
 
 void Raft::election() {
-  // if (::now() - when_ >= randomizedElectionTimeout_) {
+  // if (now() - when_ >= randomizedElectionTimeout_) {
   //   becomeCandidate();
   // }
 }
 
 void Raft::heartbeat() {}
 
-void Raft::RequestVoteService(smalljson::Value &request,
-                              smalljson::Value &response) {
+void Raft::RequestVoteService(Value &request, Value &response) {
   RequestVoteArgs args;
   RequestVoteReply reply;
   args.term = request["params"]["term"].to_integer();
   args.candidateId = request["params"]["candidateId"].to_integer();
   args.lastLogIndex = request["params"]["lastLogIndex"].to_integer();
   args.lastLogTerm = request["params"]["lastLogTerm"].to_integer();
-  RequestVote(args, reply);
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    RequestVote(args, reply);
+  }
   response.to_object();
   response["result"]["term"] = long(reply.term);
   response["result"]["voteGranted"] = reply.voteGranted;
 }
 
-void Raft::AppendEntriesService(smalljson::Value &request,
-                                smalljson::Value &response) {
+void Raft::AppendEntriesService(Value &request, Value &response) {
   AppendEntriesArgs args;
   AppendEntriesReply reply;
   args.term = request["params"]["term"].to_integer();
@@ -79,7 +114,10 @@ void Raft::AppendEntriesService(smalljson::Value &request,
   }
   args.entries = std::move(log);
   args.leaderCommit = request["params"]["leaderCommit"].to_integer();
-  AppendEntries(args, reply);
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    AppendEntries(args, reply);
+  }
   response.to_object();
   response["result"]["term"] = long(reply.term);
   response["result"]["success"] = reply.success;
@@ -133,4 +171,13 @@ void Raft::AppendEntries(const AppendEntriesArgs &args,
     commitIndex = std::min(args.leaderCommit, index);
   }
   reply.success = true;
+}
+
+void Raft::FinishRequestVote(Value &reply) {}
+
+void Raft::FinishAppendEntries(Value &reply) {}
+
+void Raft::resetTimer() {
+  randomizedElectionTimeout_ = Timer::milliseconds(u(e));
+  when_ = now();
 }
