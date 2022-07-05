@@ -13,7 +13,8 @@ public:
   void RequestVote(const RequestVoteArgs &args);
   void AppendEntries(const AppendEntriesArgs &args);
   void start() { client_.start(); }
-  void addRaft(Raft*raftPtr);
+  void addRaft(Raft *raftPtr);
+
 private:
   int peerId;
   Raft *raftPtr_;

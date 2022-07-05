@@ -7,6 +7,7 @@
 class Log {
 public:
   struct LogEntry {
+    LogEntry() : index(0), term(-1) {}
     int index;
     int term;
     smalljson::Value command;
@@ -59,6 +60,6 @@ public:
 
 private:
   const LogEntry &firstLogEntry() const { return *log_.begin(); }
-  const LogEntry &lastLogEntry() const { return *log_.end(); }
+  const LogEntry &lastLogEntry() const { return *(log_.end() - 1); }
   std::vector<LogEntry> log_; //日志
 };

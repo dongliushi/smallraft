@@ -7,7 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 project(smallraft LANGUAGES CXX)
 
 if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
+    set(CMAKE_BUILD_TYPE Debug)
 endif()
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)

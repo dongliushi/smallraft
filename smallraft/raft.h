@@ -22,7 +22,7 @@ class RaftPeer;
 class Raft : public std::enable_shared_from_this<Raft> {
 public:
   enum class State { Follower, Candidate, Leader };
-  typedef std::unique_ptr<RaftPeer> RaftPeerPtr;
+  typedef std::shared_ptr<RaftPeer> RaftPeerPtr;
   friend class RaftService;
   friend class RaftPeer;
 
@@ -34,18 +34,22 @@ public:
   void tick();
   void election();
   void heartbeat();
+  void info();
 
 private:
+  std::string stateString();
   void resetTimer();
   void RequestVoteService(smalljson::Value &request,
                           smalljson::Value &response);
   void RequestVote(const RequestVoteArgs &args, RequestVoteReply &reply);
-  void FinishRequestVote(smalljson::Value &reply);
+  void FinishRequestVote(smalljson::Value &response);
+  void runInLoopRequestVote(RequestVoteReply &reply);
 
   void AppendEntriesService(smalljson::Value &request,
                             smalljson::Value &response);
   void AppendEntries(const AppendEntriesArgs &args, AppendEntriesReply &reply);
-  void FinishAppendEntries(smalljson::Value &reply);
+  void FinishAppendEntries(smalljson::Value &response);
+  void runInLoopAppendEntries(AppendEntriesReply &reply);
 
   void startRequestVote();
   void becomeFollower(int term);
@@ -67,8 +71,8 @@ private:
   int currentTerm_; // 当前任期
   int votedFor_;    // 当前任期投票对象
   Log log_;         //日志
-  int commitIndex;  //
-  int lastApplied;
+  int commitIndex_; //
+  int lastApplied_;
   std::vector<int> nextIndex_;
   std::vector<int> matchIndex_;
 };
