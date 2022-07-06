@@ -16,6 +16,8 @@ public:
   typedef std::vector<LogEntry>::const_iterator const_iterator;
 
   Log() = default;
+  Log(std::vector<LogEntry> entries) : log_(entries) {}
+  Log(std::initializer_list<LogEntry> init_list) : log_(init_list) {}
   int firstLogTerm() const { return firstLogEntry().term; }
   int firstLogIndex() const { return firstLogEntry().index; }
   int lastLogTerm() const { return lastLogEntry().term; }
@@ -50,6 +52,9 @@ public:
   }
   iterator insert(const_iterator pos, const LogEntry &value) {
     return log_.insert(pos, value);
+  }
+  std::vector<LogEntry> getEntries(int index) {
+    return {log_.begin() + index, log_.end()};
   }
 
 public:

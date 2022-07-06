@@ -32,7 +32,6 @@ public:
   void start();
   State state() const { return state_; }
   void tick();
-  void election();
   void heartbeat();
   void info();
 
@@ -52,13 +51,16 @@ private:
   void runInLoopAppendEntries(AppendEntriesReply &reply);
 
   void startRequestVote();
+  void startAppendEntries();
   void becomeFollower(int term);
   void becomeCandidate();
+  void becomeLeader();
 
 private:
   std::uniform_int_distribution<int> u{1000, 1400};
   std::default_random_engine e;
   Timer::milliseconds randomizedElectionTimeout_ = Timer::milliseconds(u(e));
+  Timer::milliseconds heartbeatTimeout_ = Timer::milliseconds(150);
   EventLoopThread loopThread_;
   EventLoop *clientLoop_;
   EventLoop *loop_;
@@ -66,6 +68,7 @@ private:
   std::mutex mutex_;
   TimeStamp when_;
   State state_; // 状态
+  int voteCount_ = 0;
   int id_;
   int peerNum_;
   int currentTerm_; // 当前任期

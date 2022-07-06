@@ -20,8 +20,8 @@ void RaftPeer::RequestVote(const RequestVoteArgs &args) {
   request.to_object();
   request["term"] = args.term;
   request["candidateId"] = args.candidateId;
-  request["lastLogIndex"] = args.lastLogIndex;
-  request["lastLogTerm"] = args.lastLogTerm;
+  // request["lastLogIndex"] = args.lastLogIndex;
+  // request["lastLogTerm"] = args.lastLogTerm;
   client_.Call("Raft.RequestVote", request,
                std::bind(&Raft::FinishRequestVote, raftPtr_, _1));
 }
@@ -34,19 +34,23 @@ void RaftPeer::AppendEntries(const AppendEntriesArgs &args) {
   request.to_object();
   request["term"] = args.term;
   request["leaderId"] = args.leaderId;
-  request["prevLogIndex"] = args.prevLogIndex;
-  request["prevLogTerm"] = args.prevLogTerm;
-  request["entries"].to_array();
-  for (int i = 0; i < args.entries.size(); i++) {
-    const Log::LogEntry &logentry = args.entries[i];
-    Value entry;
-    entry.to_object();
-    entry["index"] = logentry.index;
-    entry["term"] = logentry.term;
-    entry["command"] = logentry.command;
-    request["entries"][i] = entry;
-  }
-  request["leaderCommit"] = args.leaderCommit;
+  // request["prevLogIndex"] = args.prevLogIndex;
+  // request["prevLogTerm"] = args.prevLogTerm;
+  // request["entries"].to_array();
+  // Array entries;
+  // for (int i = 0; i < args.entries.size(); i++) {
+  //   const Log::LogEntry &logentry = args.entries[i];
+  //   Value entry;
+  //   entry.to_object();
+  //   entry["index"] = logentry.index;
+  //   entry["term"] = logentry.term;
+  //   entry["command"] = logentry.command;
+  //   entries.emplace_back(entry);
+  // }
+  // request["entries"] = entries;
+  // request["leaderCommit"] = args.leaderCommit;
+  // LOG_DEBUG << request.to_print();
+  // LOG_DEBUG << "SEND_APPENDENTRIES";
   client_.Call("Raft.AppendEntries", request,
                std::bind(&Raft::FinishAppendEntries, raftPtr_, _1));
 }
