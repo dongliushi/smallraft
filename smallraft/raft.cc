@@ -48,15 +48,15 @@ void Raft::becomeLeader() {
 
 void Raft::tick() {
   loop_->assertInLoopThread();
-  info();
+  // info();
   switch (state_) {
   case State::Follower:
+  case State::Candidate:
     if (now() - when_ >= randomizedElectionTimeout_) {
       becomeCandidate();
+      resetTimer();
+      startRequestVote();
     }
-    break;
-  case State::Candidate:
-    startRequestVote();
     break;
   case State::Leader:
     heartbeat();
@@ -121,12 +121,12 @@ void Raft::heartbeat() {
 
 void Raft::RequestVote(const RequestVoteArgs &args, RequestVoteReply &reply) {
   reply.term = currentTerm_;
+  if (args.term > currentTerm_)
+    becomeFollower(args.term);
   if (args.term < currentTerm_) {
     reply.voteGranted = false;
     return;
   }
-  if (args.term > currentTerm_)
-    becomeFollower(args.term);
   if ((votedFor_ == -1 || votedFor_ == args.candidateId) &&
       args.term == currentTerm_) {
     // log_.isUpdate(args.lastLogTerm, args.lastLogIndex)) {
@@ -141,12 +141,12 @@ void Raft::RequestVote(const RequestVoteArgs &args, RequestVoteReply &reply) {
 void Raft::AppendEntries(const AppendEntriesArgs &args,
                          AppendEntriesReply &reply) {
   reply.term = currentTerm_;
+  if (args.term > currentTerm_) {
+    becomeFollower(args.term);
+  }
   if (args.term < currentTerm_) {
     reply.success = false;
     return;
-  }
-  if (args.term > currentTerm_) {
-    becomeFollower(args.term);
   }
   reply.success = true;
   if (args.term == currentTerm_) {
@@ -188,12 +188,10 @@ void Raft::FinishRequestVote(RequestVoteReply &reply) {
     becomeFollower(reply.term);
     return;
   }
-  if (reply.term == currentTerm_) {
-    if (reply.voteGranted) {
-      voteCount_++;
-      if (voteCount_ > peerNum_ / 2) {
-        becomeLeader();
-      }
+  if (reply.voteGranted) {
+    voteCount_++;
+    if (voteCount_ > peerNum_ / 2) {
+      becomeLeader();
     }
   }
 }
