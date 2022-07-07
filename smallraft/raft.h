@@ -38,17 +38,11 @@ public:
 private:
   std::string stateString();
   void resetTimer();
-  void RequestVoteService(smalljson::Value &request,
-                          smalljson::Value &response);
   void RequestVote(const RequestVoteArgs &args, RequestVoteReply &reply);
-  void FinishRequestVote(smalljson::Value &response);
-  void runInLoopRequestVote(RequestVoteReply &reply);
+  void FinishRequestVote(RequestVoteReply &reply);
 
-  void AppendEntriesService(smalljson::Value &request,
-                            smalljson::Value &response);
   void AppendEntries(const AppendEntriesArgs &args, AppendEntriesReply &reply);
-  void FinishAppendEntries(smalljson::Value &response);
-  void runInLoopAppendEntries(AppendEntriesReply &reply);
+  void FinishAppendEntries(AppendEntriesReply &reply);
 
   void startRequestVote();
   void startAppendEntries();

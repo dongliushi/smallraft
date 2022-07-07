@@ -119,21 +119,6 @@ void Raft::heartbeat() {
   }
 }
 
-void Raft::RequestVoteService(Value &request, Value &response) {
-  RequestVoteArgs args;
-  RequestVoteReply reply;
-  args.term = request["params"]["term"].to_integer();
-  args.candidateId = request["params"]["candidateId"].to_integer();
-  // args.lastLogIndex = request["params"]["lastLogIndex"].to_integer();
-  // args.lastLogTerm = request["params"]["lastLogTerm"].to_integer();
-  {
-    std::unique_lock<std::mutex> lock(mutex_);
-    RequestVote(args, reply);
-  }
-  response["term"] = reply.term;
-  response["voteGranted"] = reply.voteGranted;
-}
-
 void Raft::RequestVote(const RequestVoteArgs &args, RequestVoteReply &reply) {
   reply.term = currentTerm_;
   if (args.term < currentTerm_) {
@@ -151,35 +136,6 @@ void Raft::RequestVote(const RequestVoteArgs &args, RequestVoteReply &reply) {
     return;
   }
   reply.voteGranted = false;
-}
-
-void Raft::AppendEntriesService(Value &request, Value &response) {
-  AppendEntriesArgs args;
-  AppendEntriesReply reply;
-  args.term = request["params"]["term"].to_integer();
-  args.leaderId = request["params"]["leaderId"].to_integer();
-  /*
-    // args.prevLogIndex = request["params"]["prevLogIndex"].to_integer();
-    // args.prevLogTerm = request["params"]["prevLogTerm"].to_integer();
-    // Log log;
-    // for (auto &logentry : request["params"]["entries"].to_array()) {
-    //   Log::LogEntry entry;
-    //   entry.index = logentry["index"].to_integer();
-    //   entry.term = logentry["term"].to_integer();
-    //   entry.command = logentry["command"];
-    //   log.emplace_back(entry);
-    // }
-    // args.entries = std::move(log);
-    // args.leaderCommit = request["params"]["leaderCommit"].to_integer();
-  */
-  {
-    std::unique_lock<std::mutex> lock(mutex_);
-    AppendEntries(args, reply);
-  }
-  response.to_object();
-  response["term"] = reply.term;
-  response["success"] = reply.success;
-  // response["prevIndex"] = reply.prevIndex;
 }
 
 void Raft::AppendEntries(const AppendEntriesArgs &args,
@@ -224,14 +180,7 @@ void Raft::AppendEntries(const AppendEntriesArgs &args,
     */
 }
 
-void Raft::FinishRequestVote(Value &response) {
-  RequestVoteReply reply;
-  reply.term = response["result"]["term"].to_integer();
-  reply.voteGranted = response["result"]["voteGranted"].to_boolean();
-  loop_->runInLoop(std::bind(&Raft::runInLoopRequestVote, this, reply));
-}
-
-void Raft::runInLoopRequestVote(RequestVoteReply &reply) {
+void Raft::FinishRequestVote(RequestVoteReply &reply) {
   loop_->assertInLoopThread();
   if (state_ != State::Candidate)
     return;
@@ -249,15 +198,7 @@ void Raft::runInLoopRequestVote(RequestVoteReply &reply) {
   }
 }
 
-void Raft::FinishAppendEntries(Value &response) {
-  AppendEntriesReply reply;
-  reply.term = response["result"]["term"].to_integer();
-  reply.success = response["result"]["success"].to_boolean();
-  // reply.prevIndex = response["result"]["prevIndex"].to_integer();
-  loop_->runInLoop(std::bind(&Raft::runInLoopAppendEntries, this, reply));
-}
-
-void Raft::runInLoopAppendEntries(AppendEntriesReply &reply) {
+void Raft::FinishAppendEntries(AppendEntriesReply &reply) {
   loop_->assertInLoopThread();
   if (currentTerm_ < reply.term) {
     becomeFollower(reply.term);
