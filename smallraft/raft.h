@@ -1,7 +1,6 @@
 #pragma once
 
 #include "config.h"
-#include "log.h"
 #include <mutex>
 #include <random>
 #include <smalljrpc/Procedure.h>
@@ -13,6 +12,7 @@
 #include <string>
 #include <vector>
 
+struct LogEntry;
 struct RequestVoteArgs;
 struct RequestVoteReply;
 struct AppendEntriesArgs;
@@ -79,6 +79,13 @@ private:
       nextIndex_; // 对于每一台服务器，发送到该服务器的下一个日志条目的索引（初始值为领导人最后的日志条目的索引+1）
   std::vector<int>
       matchIndex_; // 对于每一台服务器，已知的已经复制到该服务器的最高日志条目的索引（初始值为0，单调递增）
+};
+
+struct LogEntry {
+  LogEntry() : index(0), term(0) {}
+  int index;
+  int term;
+  smalljson::Value command;
 };
 
 struct RequestVoteArgs {
