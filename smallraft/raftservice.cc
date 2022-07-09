@@ -48,5 +48,5 @@ void RaftService::AppendEntries(Value &request, Value &response) {
   response.to_object();
   response["term"] = reply.term;
   response["success"] = reply.success;
-//   response["prevIndex"] = reply.prevIndex;
+  response["prevIndex"] = reply.prevIndex;
 }

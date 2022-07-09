@@ -15,8 +15,12 @@ public:
   Node(EventLoop *rpcLoop, const Config &c)
       : loop_(loopThread_.startLoop()), rpcServer_(rpcLoop, c.serverAddr),
         raft_(new Raft(loop_, c)), raftService_(rpcServer_, raft_) {}
-          
+
   void start() { loop_->runInLoop(std::bind(&Node::startInLoop, this)); }
+  bool isLeader() { return raft_->isLeader(); }
+  void provideCommand(const smalljson::Value &command) {
+    raft_->provideCommand(command);
+  }
 
 private:
   void startInLoop();

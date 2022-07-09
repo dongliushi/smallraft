@@ -24,6 +24,20 @@ void Raft::start() {
   }
 }
 
+std::string Raft::stateString() {
+  const char *stateStr[3] = {"Follower", "Candidate", "Leader"};
+  return stateStr[int(state_)];
+}
+
+void Raft::info() {
+  char buf[512];
+  std::snprintf(buf, sizeof buf,
+                "raft[%d] %s, term %d, #votes %d, commit %d,#granted %d", id_,
+                stateString().c_str(), currentTerm_, votedFor_, commitIndex_,
+                voteCount_);
+  LOG_DEBUG << buf;
+}
+
 void Raft::becomeFollower(int term) {
   state_ = State::Follower;
   currentTerm_ = term;
@@ -97,20 +111,6 @@ void Raft::startAppendEntries() {
   }
 }
 
-std::string Raft::stateString() {
-  const char *stateStr[3] = {"Follower", "Candidate", "Leader"};
-  return stateStr[int(state_)];
-}
-
-void Raft::info() {
-  char buf[512];
-  std::snprintf(buf, sizeof buf,
-                "raft[%d] %s, term %d, #votes %d, commit %d,#granted %d", id_,
-                stateString().c_str(), currentTerm_, votedFor_, commitIndex_,
-                voteCount_);
-  LOG_DEBUG << buf;
-}
-
 void Raft::heartbeat() {
   if (now() - when_ >= heartbeatTimeout_) {
     resetTimer();
@@ -144,6 +144,7 @@ void Raft::RequestVote(const RequestVoteArgs &args, RequestVoteReply &reply) {
 void Raft::AppendEntries(const AppendEntriesArgs &args,
                          AppendEntriesReply &reply) {
   reply.term = currentTerm_;
+  reply.prevIndex = args.prevLogIndex; // 返回给leader用于更新nextIndex
   if (args.term < currentTerm_) {
     reply.success = false;
     return;
@@ -151,38 +152,32 @@ void Raft::AppendEntries(const AppendEntriesArgs &args,
   if (args.term > currentTerm_) {
     becomeFollower(args.term);
   }
-  reply.success = true;
   resetTimer();
-  if (args.term == currentTerm_) {
-    if (state_ != State::Follower)
-      becomeFollower(args.term);
-    reply.success = true;
+  size_t currentLogLen = logs_.size() - 1;
+  if (args.prevLogIndex > currentLogLen ||
+      logs_[args.prevLogIndex].term != args.prevLogTerm) {
+    reply.success = false;
+    if (args.prevLogIndex > currentLogLen) {
+      reply.prevIndex = currentLogLen + 1;
+      return;
+    }
+    logs_.erase(logs_.begin() + args.prevLogIndex, logs_.end());
+    return;
   }
-  return;
-  /*
-    // size_t currentLogLen = log_.size() - 1;
-    // if (args.prevLogIndex > currentLogLen ||
-    //     log_[args.prevLogIndex].term != args.prevLogTerm) {
-    //   if (args.prevLogIndex > currentLogLen) {
-    //     reply.prevIndex = currentLogLen;
-    //     reply.success = false;
-    //     return;
-    //   }
-    //   log_.erase(log_.begin() + args.prevLogIndex, log_.end());
-    //   reply.success = false;
-    //   return;
-    // }
-    // log_.insert(log_.end(), args.entries);
-    // if (args.leaderCommit > commitIndex_) {
-    //   int oldCommitIndex = commitIndex_;
-    //   int index = log_.size() - 1;
-    //   commitIndex_ = std::min(args.leaderCommit, index);
-    // }
-    // reply.success = true;
-    */
+  for (int i = 0; i < args.entries.size(); i++) {
+    logs_.emplace_back(args.entries[i]);
+  }
+  reply.success = true;
+  if (args.leaderCommit > commitIndex_) {
+    int oldCommitIndex = commitIndex_;
+    int index = logs_.size() - 1;
+    commitIndex_ = std::min(args.leaderCommit, index);
+    // go apply(); to_do
+  }
 }
 
-void Raft::FinishRequestVote(RequestVoteReply &reply) {
+void Raft::FinishRequestVote(int peerId, const RequestVoteArgs &args,
+                             const RequestVoteReply &reply) {
   loop_->assertInLoopThread();
   if (state_ != State::Candidate)
     return;
@@ -198,7 +193,8 @@ void Raft::FinishRequestVote(RequestVoteReply &reply) {
   }
 }
 
-void Raft::FinishAppendEntries(AppendEntriesReply &reply) {
+void Raft::FinishAppendEntries(int peerId, const AppendEntriesArgs &args,
+                               const AppendEntriesReply &reply) {
   loop_->assertInLoopThread();
   if (currentTerm_ < reply.term) {
     becomeFollower(reply.term);
@@ -207,8 +203,38 @@ void Raft::FinishAppendEntries(AppendEntriesReply &reply) {
   if (state_ != State::Leader || currentTerm_ > reply.term) {
     return;
   }
-  // if (!reply.success) {
-  // }
+  if (!reply.success) {
+    nextIndex_[peerId - 1] = reply.prevIndex;
+  } else {
+    nextIndex_[peerId - 1] = args.prevLogIndex + args.entries.size() + 1;
+    matchIndex_[peerId - 1] = args.prevLogIndex + args.entries.size();
+    auto save_matchIndex = matchIndex_;
+    for (int i = save_matchIndex[peerId - 1]; i >= args.prevLogIndex + 1; i--) {
+      if (logs_[i].term < currentTerm_ || i <= commitIndex_) {
+        break;
+      }
+      int replication = 0;
+      for (int j = 0; j < peerNum_; j++) {
+        if (i <= save_matchIndex[j]) {
+          replication++;
+        }
+      }
+      if (replication * 2 > peerNum_) {
+        commitIndex_ = i;
+        break;
+      }
+    }
+  }
+}
+
+void Raft::provideCommand(const smalljson::Value &command) {
+  int index = (logs_.end() - 1)->index + 1;
+  int currentTerm = currentTerm_;
+  bool isLeader = (state_ == State::Leader);
+  LogEntry entry(index, currentTerm, command);
+  if (isLeader) {
+    logs_.emplace_back(std::move(entry));
+  }
 }
 
 void Raft::resetTimer() {

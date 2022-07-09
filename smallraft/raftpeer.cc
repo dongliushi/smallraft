@@ -23,14 +23,14 @@ void RaftPeer::RequestVote(const RequestVoteArgs &args) {
   request["lastLogIndex"] = args.lastLogIndex;
   request["lastLogTerm"] = args.lastLogTerm;
   client_.Call("Raft.RequestVote", request,
-               std::bind(&RaftPeer::FinishRequestVote, this, _1));
+               std::bind(&RaftPeer::FinishRequestVote, this, args, _1));
 }
 
-void RaftPeer::FinishRequestVote(Value &response) {
+void RaftPeer::FinishRequestVote(const RequestVoteArgs &args, Value &response) {
   RequestVoteReply reply;
   reply.term = response["result"]["term"].to_integer();
   reply.voteGranted = response["result"]["voteGranted"].to_boolean();
-  raftPtr_->FinishRequestVote(reply);
+  raftPtr_->FinishRequestVote(peerId, args, reply);
 }
 
 void RaftPeer::AppendEntries(const AppendEntriesArgs &args) {
@@ -56,12 +56,13 @@ void RaftPeer::AppendEntries(const AppendEntriesArgs &args) {
   request["entries"] = entries;
   request["leaderCommit"] = args.leaderCommit;
   client_.Call("Raft.AppendEntries", request,
-               std::bind(&RaftPeer::FinishAppendEntries, this, _1));
+               std::bind(&RaftPeer::FinishAppendEntries, this, args, _1));
 }
-void RaftPeer::FinishAppendEntries(Value &response) {
+void RaftPeer::FinishAppendEntries(const AppendEntriesArgs &args,
+                                   Value &response) {
   AppendEntriesReply reply;
   reply.term = response["result"]["term"].to_integer();
   reply.success = response["result"]["success"].to_boolean();
-  // reply.prevIndex = response["result"]["prevIndex"].to_integer();
-  raftPtr_->FinishAppendEntries(reply);
+  reply.prevIndex = response["result"]["prevIndex"].to_integer();
+  raftPtr_->FinishAppendEntries(peerId, args, reply);
 }

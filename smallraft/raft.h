@@ -31,19 +31,23 @@ public:
   Raft() = delete;
   Raft(EventLoop *loop, const Config &config);
   void start();
-  State state() const { return state_; }
   void tick();
-  void heartbeat();
   void info();
+  bool isLeader() { return state_ == State::Leader; }
+  void provideCommand(const smalljson::Value &command);
 
 private:
+  State state() const { return state_; }
   std::string stateString();
   void resetTimer();
+  void heartbeat();
   void RequestVote(const RequestVoteArgs &args, RequestVoteReply &reply);
-  void FinishRequestVote(RequestVoteReply &reply);
+  void FinishRequestVote(int peerId, const RequestVoteArgs &args,
+                         const RequestVoteReply &reply);
 
   void AppendEntries(const AppendEntriesArgs &args, AppendEntriesReply &reply);
-  void FinishAppendEntries(AppendEntriesReply &reply);
+  void FinishAppendEntries(int peerId, const AppendEntriesArgs &args,
+                           const AppendEntriesReply &reply);
 
   void startRequestVote();
   void startAppendEntries();
@@ -83,6 +87,8 @@ private:
 
 struct LogEntry {
   LogEntry() : index(0), term(0) {}
+  LogEntry(int kIndex, int kTerm, const smalljson::Value &kCommand)
+      : index(kIndex), term(kTerm), command(kCommand) {}
   int index;
   int term;
   smalljson::Value command;
